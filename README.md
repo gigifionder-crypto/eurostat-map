@@ -1,148 +1,86 @@
-# eurostat-map: Data-Driven Maps
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+RIPARTO COSTITUZIONALE DEI COLLEGI UNINOMINALI — Camera dei Deputati
+Art. 56, quarto comma, Cost.: ripartizione dei seggi tra le circoscrizioni
+"in proporzione alla popolazione legale", "sulla base dei quozienti interi
+e dei più alti resti" (metodo Hare-Niemeyer).
 
-<div align="center">
-  <img src="https://img.shields.io/bundlephobia/min/eurostat-map" alt="npm bundle size">
-  <img src="https://img.shields.io/npm/v/eurostat-map" alt="npm">
-  <img src="https://img.shields.io/badge/license-EUPL-success" alt="license">
-  <a href="http://www.awesomeofficialstatistics.org"><img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome Official Statistics"></a>
-</div>
+Deputati totali: 400, di cui 8 eletti nella Circoscrizione Estero
+(art. 56, secondo comma) → seggi da ripartire sul territorio nazionale: 392.
 
-<br>
-<div align="center">
-  <img src="https://raw.githubusercontent.com/eurostat/eurostat-map/master/docs/img/eurostat-map-logo-cropped.png" alt="examples" width="400"/>
-</div>
-<div align="center">
-  <em>Build publication-ready statistical maps of Europe in minutes.</em>
-</div>
+Popolazione di riferimento: popolazione legale, Censimento permanente
+ISTAT 2021 (da verificare con i valori pubblicati in Gazzetta Ufficiale).
+"""
 
-<div align="center">
-  D3-based mapping library for Eurostat and custom data - the engine that powers <a href="https://gisco-services.ec.europa.eu/image/" target="_blank"><strong>IMAGE</strong></a>.
-</div>
+SEGGI_NAZIONALI = 392  # 400 - 8 (Circoscrizione Estero)
 
-<div align="center">
-  <a href="docs/reference.md" target="_blank"><strong>Documentation</strong></a> ·
-  <a href="https://eurostat.github.io/eurostat-map/examples/index.html" target="_blank"><strong>Live examples</strong></a> ·
-  <a href="https://observablehq.com/collection/@eurostat-ws/eurostatmap-js" target="_blank"><strong>Quickstart notebook</strong></a>
-</div>
-<hr>
+# Popolazione legale Censimento permanente 2021 (ISTAT)
+POPOLAZIONE = {
+    'ITC1': ('Piemonte',              4_256_350),
+    'ITC2': ("Valle d'Aosta",           123_360),
+    'ITC3': ('Liguria',               1_509_805),
+    'ITC4': ('Lombardia',             9_943_004),
+    'ITH1': ('Bolzano/Bozen',           532_644),
+    'ITH2': ('Trento',                  540_958),
+    'ITH3': ('Veneto',                4_847_745),
+    'ITH4': ('Friuli-Venezia Giulia', 1_194_647),
+    'ITH5': ('Emilia-Romagna',        4_425_366),
+    'ITI1': ('Toscana',               3_661_981),
+    'ITI2': ('Umbria',                  854_137),
+    'ITI3': ('Marche',                1_484_427),
+    'ITI4': ('Lazio',                 5_714_882),
+    'ITF1': ('Abruzzo',               1_272_973),
+    'ITF2': ('Molise',                  290_636),
+    'ITF3': ('Campania',              5_590_681),
+    'ITF4': ('Puglia',                3_890_250),
+    'ITF5': ('Basilicata',              537_577),
+    'ITF6': ('Calabria',              1_841_300),
+    'ITG1': ('Sicilia',               4_833_705),
+    'ITG2': ('Sardegna',              1_575_028),
+}
 
-- **Interactive SVG maps** rendered using **D3.js**.
-- **TypeScript support** with built-in definition typings.
-- **NUTS geometries** fetched dynamically via the **Nuts2json API** (TopoJSON format).
-- **Eurostat API integration** using the **JSON-stat** standard.
+pop_tot = sum(p for _, p in POPOLAZIONE.values())
+quoziente = pop_tot / SEGGI_NAZIONALI  # quoziente naturale (Hare)
 
-<hr>
-<br>
-<div align="center">
+print(f'Popolazione legale totale : {pop_tot:>12,}'.replace(',', '.'))
+print(f'Seggi nazionali           : {SEGGI_NAZIONALI}')
+print(f'Quoziente naturale        : {quoziente:>12,.3f}'.replace(',', '.'))
+print()
 
-  <table>
-    <tr>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/choropleth/population-density.html" target="_blank"><img src="examples/img/previews/choropleth/population-density.png" alt="Population density example"  /></a></td>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/proportional/prop-circles.html" target="_blank"><img src="examples/img/previews/proportional/prop-circles.png" alt="Proportional circles example"  /></a></td>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/flow/flowmap.html" target="_blank"><img src="examples/img/previews/flow/flowmap.png" alt="Flow map example"  /></a></td>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/mushroom/mushroom.html" target="_blank"><img src="examples/img/previews/mushroom/mushroom.png" alt="Mushroom map example"  /></a></td>
-    </tr>
-    <tr>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/sparklines/sparklines-grid-cartogram.html" target="_blank"><img src="examples/img/previews/sparklines/sparklines-grid-cartogram.png" alt="Sparklines map example"  /></a></td>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/bivariate/pop-unemploy-bivariate.html" target="_blank"><img src="examples/img/previews/bivariate/pop-unemploy-bivariate.png" alt="Bivariate map example"  /></a></td>
-      <td><a href="https://eurostat.github.io/eurostat-map/examples/trivariate/trivariate.html" target="_blank"><img src="examples/img/previews/trivariate/trivariate.png" alt="Trivariate map example"  /></a></td>
-        <td><a href="https://eurostat.github.io/eurostat-map/examples/stripe/livestock_composition.html" target="_blank"><img src="examples/img/previews/stripe/livestock_composition.png" alt="Trivariate map example"  /></a></td>
-    </tr>
-  </table>
-</div>
+# Fase 1: quozienti interi
+righe = []
+for nuts, (nome, pop) in POPOLAZIONE.items():
+    q = pop / quoziente
+    intero = int(q)
+    resto = q - intero
+    righe.append([nuts, nome, pop, q, intero, resto, 0])
 
----
+assegnati = sum(r[4] for r in righe)
+residui = SEGGI_NAZIONALI - assegnati
+print(f'Seggi per quoziente intero: {assegnati}  |  Seggi residui: {residui}')
 
-## Resources
+# Fase 2: più alti resti
+for r in sorted(righe, key=lambda x: -x[5])[:residui]:
+    r[6] = 1
 
-- [Quick Start](#quick-start)
-- [Examples](https://eurostat.github.io/eurostat-map/examples/index.html)
-- [Documentation](#documentation)
-- [Made with eurostat-map](#made-with-eurostat-map)
-- [About](#about)
-- [Contribute](#contribute)
-- [Copyright](#copyright)
-- [Disclaimer](#disclaimer)
+print()
+print(f"{'NUTS':<6}{'Circoscrizione':<24}{'Popolazione':>12}{'Quoz.':>10}"
+      f"{'Interi':>8}{'Resto':>8}{'+R':>4}{'TOTALE':>8}")
+print('-' * 80)
+totale = 0
+RIPARTO = {}
+for r in sorted(righe, key=lambda x: x[0]):
+    tot = r[4] + r[6]
+    totale += tot
+    RIPARTO[r[0]] = tot
+    print(f"{r[0]:<6}{r[1]:<24}{r[2]:>12,}{r[3]:>10.3f}"
+          f"{r[4]:>8}{r[5]:>8.3f}{'+1' if r[6] else '':>4}{tot:>8}".replace(',', '.'))
+print('-' * 80)
+print(f"{'TOTALE NAZIONALE':<42}{'':>10}{'':>8}{'':>8}{'':>4}{totale:>8}")
+print(f"{'Circoscrizione Estero (art. 56, c. 2)':<72}{8:>8}")
+print(f"{'TOTALE CAMERA DEI DEPUTATI':<72}{totale + 8:>8}")
 
----
-
-## Quick Start
-
-```bash
-npm install eurostat-map
-```
-
-```javascript
-import eurostatmap from 'eurostat-map'
-```
-
-or
-
-```javascript
-const eurostatmap = require('eurostat-map')
-```
-
-or
-
-```html
-<script src="https://unpkg.com/eurostat-map"></script>
-```
-
-then
-
-```javascript
-eurostatmap
-    .map('choropleth')
-    .title('Population density in Europe')
-    .stat({ eurostatDatasetCode: 'demo_r_d3dens', unitText: 'people/km²' })
-    .legend({ x: 500, y: 180, title: 'Density, people/km²' })
-    .build()
-```
-
-Want a guided setup? Try the notebook:
-https://observablehq.com/@joewdavies/eurostat-map-js
-
-## Documentation
-
-For detailed documentation on what eurostat-map can do, see the **[documentation page](docs/reference.md)**.
-
-For generated, signature-accurate API docs from TypeScript/JSDoc, see [the API docs](https://eurostat.github.io/eurostat-map/docs/api/index.html).
-
-Anything unclear or missing? Feel free to [ask](https://github.com/eurostat/eurostat.js/issues/new)!
-
-## Made with eurostat-map
-
-Here are some public projects and publications built with eurostat-map:
-
-- [IMAGE](https://gisco-services.ec.europa.eu/image/) - Eurostat's interactive map generator.
-- [Regions in Europe 2025](https://ec.europa.eu/eurostat/web/interactive-publications/regions-2025) - interactive publication.
-- [Eurostat Regional Yearbook](https://ec.europa.eu/eurostat/statistics-explained/index.php?title=Eurostat_regional_yearbook) - interactive publication.
-- [Women make up 53% of science & technology ranks](https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260529-2)
-- [Average work week nearly 36 hours in the EU in 2025](https://ec.europa.eu/eurostat/en/web/products-eurostat-news/w/ddn-20260527-1)
-- [Tourism nights booked via platforms hit nearly 1 billion](https://ec.europa.eu/eurostat/en/web/products-eurostat-news/w/ddn-20260401-1)
-- [EU rail passengers made 8.7 billion trips in 2024](https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260514-1)
-- [EU life expectancy increases again and hits 81.5 years](https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260313-3)
-- [Statistics Explained - Businesses in Manufacturing](https://ec.europa.eu/eurostat/statistics-explained/index.php?title=Businesses_in_the_manufacturing_sector#Regional_data:_Manufacturing)
-
-## About
-
-eurostat-map is an open-source JavaScript library for building interactive, publication-ready statistical maps focused on Europe. It combines D3-based SVG rendering with direct support for Eurostat datasets (JSON-stat), NUTS geographies from Nuts2json, and custom data workflows, and includes map types such as choropleth, proportional symbols, cartograms, flow maps, and composition charts. The project is designed for analysts, journalists, and institutions that need reproducible, configurable map visualizations for both exploratory analysis and official communication.
-
-|                |                                                                                                                                                                                       |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _contributors_ | [<img src="https://github.com/jgaffuri.png" height="40" />](https://github.com/jgaffuri) [<img src="https://github.com/JoeWDavies.png" height="40" />](https://github.com/JoeWDavies) |
-| _version_      | See [npm](https://www.npmjs.com/package/eurostat-map?activeTab=versions)                                                                                                              |
-| _status_       | Since 2018                                                                                                                                                                            |
-| _license_      | [EUPL 1.2](https://github.com/eurostat/Nuts2json/blob/master/LICENSE)                                                                                                                 |
-
-## Contribute
-
-Feel free to [ask for assistance](https://github.com/eurostat/eurostat.js/issues/new), fork the project or simply star it (it's always a pleasure).
-
-## Copyright
-
-The [Eurostat NUTS dataset](http://ec.europa.eu/eurostat/web/nuts/overview) is copyrighted. There are [specific provisions](https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units) for the usage of this dataset which must be respected. The usage of these data is subject to their acceptance. See the [Eurostat-GISCO website](https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units) for more information.
-
-## Disclaimer
-
-The designations employed and the presentation of material on these maps do not imply the expression of any opinion whatsoever on the part of the European Union concerning the legal status of any country, territory, city or area or of its authorities, or concerning the delimitation of its frontiers or boundaries. Kosovo*: This designation is without prejudice to positions on status, and is in line with UNSCR 1244/1999 and the ICJ Opinion on the Kosovo declaration of independence. Palestine*: This designation shall not be construed as recognition of a State of Palestine and is without prejudice to the individual positions of the Member States on this issue.
+import json
+with open('/home/claude/riparto_392.json', 'w') as f:
+    json.dump(RIPARTO, f)
