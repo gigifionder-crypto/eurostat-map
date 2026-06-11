@@ -1,86 +1,145 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-RIPARTO COSTITUZIONALE DEI COLLEGI UNINOMINALI — Camera dei Deputati
-Art. 56, quarto comma, Cost.: ripartizione dei seggi tra le circoscrizioni
-"in proporzione alla popolazione legale", "sulla base dei quozienti interi
-e dei più alti resti" (metodo Hare-Niemeyer).
-
-Deputati totali: 400, di cui 8 eletti nella Circoscrizione Estero
-(art. 56, secondo comma) → seggi da ripartire sul territorio nazionale: 392.
-
-Popolazione di riferimento: popolazione legale, Censimento permanente
-ISTAT 2021 (da verificare con i valori pubblicati in Gazzetta Ufficiale).
+Mappa coropletica dei collegi uninominali della Camera (400 collegi)
+Confini ufficiali Eurostat-GISCO NUTS 2024 (file locale, EPSG:3035)
+Lettura diretta del GeoPackage via sqlite3 + parser WKB puro Python.
 """
+import sqlite3, struct, json
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.collections import PatchCollection
+import matplotlib.cm as cm
 
-SEGGI_NAZIONALI = 392  # 400 - 8 (Circoscrizione Estero)
+GPKG = '/mnt/user-data/uploads/NUTS_RG_20M_2024_3035.gpkg'
 
-# Popolazione legale Censimento permanente 2021 (ISTAT)
-POPOLAZIONE = {
-    'ITC1': ('Piemonte',              4_256_350),
-    'ITC2': ("Valle d'Aosta",           123_360),
-    'ITC3': ('Liguria',               1_509_805),
-    'ITC4': ('Lombardia',             9_943_004),
-    'ITH1': ('Bolzano/Bozen',           532_644),
-    'ITH2': ('Trento',                  540_958),
-    'ITH3': ('Veneto',                4_847_745),
-    'ITH4': ('Friuli-Venezia Giulia', 1_194_647),
-    'ITH5': ('Emilia-Romagna',        4_425_366),
-    'ITI1': ('Toscana',               3_661_981),
-    'ITI2': ('Umbria',                  854_137),
-    'ITI3': ('Marche',                1_484_427),
-    'ITI4': ('Lazio',                 5_714_882),
-    'ITF1': ('Abruzzo',               1_272_973),
-    'ITF2': ('Molise',                  290_636),
-    'ITF3': ('Campania',              5_590_681),
-    'ITF4': ('Puglia',                3_890_250),
-    'ITF5': ('Basilicata',              537_577),
-    'ITF6': ('Calabria',              1_841_300),
-    'ITG1': ('Sicilia',               4_833_705),
-    'ITG2': ('Sardegna',              1_575_028),
+COLLEGI_CAMERA = json.load(open('/home/claude/riparto_392.json'))
+
+# ---------------------------------------------------------------- WKB parser
+def parse_gpkg_blob(blob):
+    """Estrae il WKB dal GeoPackage Binary e restituisce lista di anelli
+    esterni [(x,y), ...] per ogni poligono."""
+    assert blob[0:2] == b'GP'
+    flags = blob[3]
+    env_ind = (flags >> 1) & 0b111
+    env_sizes = {0: 0, 1: 32, 2: 48, 3: 48, 4: 64}
+    offset = 8 + env_sizes.get(env_ind, 0)
+    return parse_wkb(blob, offset)[0]
+
+def parse_wkb(buf, off):
+    bo = '<' if buf[off] == 1 else '>'
+    gtype = struct.unpack_from(bo + 'I', buf, off + 1)[0] & 0xFF
+    off += 5
+    polys = []
+    if gtype == 3:  # Polygon
+        nrings = struct.unpack_from(bo + 'I', buf, off)[0]; off += 4
+        rings = []
+        for _ in range(nrings):
+            npts = struct.unpack_from(bo + 'I', buf, off)[0]; off += 4
+            pts = struct.unpack_from(bo + f'{npts*2}d', buf, off)
+            off += npts * 16
+            rings.append(list(zip(pts[0::2], pts[1::2])))
+        polys.append(rings)
+    elif gtype == 6:  # MultiPolygon
+        npolys = struct.unpack_from(bo + 'I', buf, off)[0]; off += 4
+        for _ in range(npolys):
+            sub, off = parse_wkb(buf, off)
+            polys.extend(sub)
+    else:
+        raise ValueError(f'Tipo geometria non gestito: {gtype}')
+    return polys, off
+
+# ---------------------------------------------------------------- lettura dati
+con = sqlite3.connect(GPKG)
+cur = con.cursor()
+tbl = cur.execute("SELECT table_name FROM gpkg_contents WHERE data_type='features'").fetchone()[0]
+cols = [c[1] for c in cur.execute(f'PRAGMA table_info({tbl})').fetchall()]
+geom_col = cur.execute(f"SELECT column_name FROM gpkg_geometry_columns WHERE table_name='{tbl}'").fetchone()[0]
+print('Tabella:', tbl, '| colonne:', cols)
+
+rows = cur.execute(
+    f"SELECT NUTS_ID, NAME_LATN, {geom_col} FROM {tbl} "
+    f"WHERE LEVL_CODE=2 AND NUTS_ID LIKE 'IT%'").fetchall()
+con.close()
+print(f'Regioni italiane NUTS-2 trovate: {len(rows)}')
+
+features = []
+for nuts_id, name, blob in rows:
+    polys = parse_gpkg_blob(blob)
+    features.append((nuts_id, name, polys))
+
+# ---------------------------------------------------------------- resa grafica
+fig, ax = plt.subplots(figsize=(9, 11), dpi=300)
+fig.patch.set_facecolor('#fbfbfb')
+ax.set_facecolor('#eef4fb')
+
+cmap = LinearSegmentedColormap.from_list(
+    'blues_ist', ['#dbeafe', '#93c5fd', '#3b82f6', '#1e40af', '#1a365d'], N=256)
+vmin, vmax = 1, 66
+norm = Normalize(vmin=vmin, vmax=vmax)
+
+def centroid_largest(polys):
+    """Centroide dell'anello esterno del poligono più esteso (area di Gauss)."""
+    best, best_area = None, -1
+    for rings in polys:
+        ext = rings[0]
+        a = cx = cy = 0.0
+        for (x1, y1), (x2, y2) in zip(ext, ext[1:] + ext[:1]):
+            cross = x1 * y2 - x2 * y1
+            a += cross; cx += (x1 + x2) * cross; cy += (y1 + y2) * cross
+        if a == 0:
+            continue
+        area = abs(a / 2)
+        if area > best_area:
+            best_area = area
+            best = (cx / (3 * a), cy / (3 * a))
+    return best
+
+for nuts_id, name, polys in features:
+    val = COLLEGI_CAMERA.get(nuts_id)
+    face = cmap(norm(val)) if val else '#dddddd'
+    patches = [MplPolygon(rings[0], closed=True) for rings in polys]
+    pc = PatchCollection(patches, facecolor=face, edgecolor='#c9a227', linewidth=0.8)
+    ax.add_collection(pc)
+
+# Etichette dopo i poligoni, così restano in primo piano
+LABEL_OFFSET = {  # piccoli aggiustamenti manuali (metri, EPSG:3035)
+    'ITC3': (16000, -26000),   # Liguria, regione stretta ad arco
+    'ITF2': (8000, 0),     # Molise
 }
+for nuts_id, name, polys in features:
+    val = COLLEGI_CAMERA.get(nuts_id)
+    if val is None:
+        continue
+    c = centroid_largest(polys)
+    dx, dy = LABEL_OFFSET.get(nuts_id, (0, 0))
+    ax.annotate(str(val), xy=(c[0] + dx, c[1] + dy), ha='center', va='center',
+                fontsize=8.5, fontweight='bold',
+                color='white' if val > 22 else '#1a365d')
 
-pop_tot = sum(p for _, p in POPOLAZIONE.values())
-quoziente = pop_tot / SEGGI_NAZIONALI  # quoziente naturale (Hare)
+ax.autoscale_view()
+ax.set_aspect('equal')
+ax.set_axis_off()
 
-print(f'Popolazione legale totale : {pop_tot:>12,}'.replace(',', '.'))
-print(f'Seggi nazionali           : {SEGGI_NAZIONALI}')
-print(f'Quoziente naturale        : {quoziente:>12,.3f}'.replace(',', '.'))
-print()
+ax.set_title("DISTRIBUZIONE GEOGRAFICA DEI COLLEGI UNINOMINALI\n"
+             "Camera dei Deputati — 392 collegi nazionali + 8 Estero = 400 (art. 56 Cost.)",
+             fontsize=13, fontweight='bold', color='#1a365d', pad=18)
 
-# Fase 1: quozienti interi
-righe = []
-for nuts, (nome, pop) in POPOLAZIONE.items():
-    q = pop / quoziente
-    intero = int(q)
-    resto = q - intero
-    righe.append([nuts, nome, pop, q, intero, resto, 0])
+sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+sm.set_array([])
+cbar = fig.colorbar(sm, ax=ax, fraction=0.03, pad=0.02, shrink=0.55)
+cbar.set_label('N. Collegi per Circoscrizione', fontsize=8, color='#1a365d')
+cbar.ax.tick_params(labelsize=7)
 
-assegnati = sum(r[4] for r in righe)
-residui = SEGGI_NAZIONALI - assegnati
-print(f'Seggi per quoziente intero: {assegnati}  |  Seggi residui: {residui}')
+fig.text(0.5, 0.02,
+         "Riparto ex art. 56, c. 4, Cost.: quozienti interi e più alti resti — Popolazione legale Censimento ISTAT 2021\n"
+         "Confini Eurostat-GISCO NUTS 2024, EPSG:3035 (CC-BY) — Regola aurea ±15% — Deroga aree interne −30%",
+         ha='center', fontsize=7.5, color='#4a5568', style='italic')
 
-# Fase 2: più alti resti
-for r in sorted(righe, key=lambda x: -x[5])[:residui]:
-    r[6] = 1
-
-print()
-print(f"{'NUTS':<6}{'Circoscrizione':<24}{'Popolazione':>12}{'Quoz.':>10}"
-      f"{'Interi':>8}{'Resto':>8}{'+R':>4}{'TOTALE':>8}")
-print('-' * 80)
-totale = 0
-RIPARTO = {}
-for r in sorted(righe, key=lambda x: x[0]):
-    tot = r[4] + r[6]
-    totale += tot
-    RIPARTO[r[0]] = tot
-    print(f"{r[0]:<6}{r[1]:<24}{r[2]:>12,}{r[3]:>10.3f}"
-          f"{r[4]:>8}{r[5]:>8.3f}{'+1' if r[6] else '':>4}{tot:>8}".replace(',', '.'))
-print('-' * 80)
-print(f"{'TOTALE NAZIONALE':<42}{'':>10}{'':>8}{'':>8}{'':>4}{totale:>8}")
-print(f"{'Circoscrizione Estero (art. 56, c. 2)':<72}{8:>8}")
-print(f"{'TOTALE CAMERA DEI DEPUTATI':<72}{totale + 8:>8}")
-
-import json
-with open('/home/claude/riparto_392.json', 'w') as f:
-    json.dump(RIPARTO, f)
+plt.tight_layout(rect=[0, 0.035, 1, 0.97])
+plt.savefig('/home/claude/mappa_collegi_REALE.png', dpi=300,
+            bbox_inches='tight', facecolor='#fbfbfb')
+print('Fatto: mappa_collegi_REALE.png')
