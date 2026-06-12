@@ -461,3 +461,4 @@ print(f"{'TOTALE CAMERA DEI DEPUTATI':<72}{totale + 8:>8}")
 import json
 with open('/home/claude/riparto_392.json', 'w') as f:
     json.dump(RIPARTO, f)
+
